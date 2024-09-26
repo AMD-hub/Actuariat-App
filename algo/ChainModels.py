@@ -1,4 +1,3 @@
-from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import linregress
@@ -104,109 +103,6 @@ class ChainLadder:
         self.DevFactors = DevFact
         self.FullTriangle = Triangle(years=triangle.years, data=FullTriangle, isCumul=True)
 
-    def Plot_by_dev(self, dev, path=None):
-        """
-        Plot the relationship between cumulative values for a specific development period (dev) 
-        and the next cumulative values at year i+1.
-
-        Args:
-            dev (int): Development period to plot.
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            tuple: Tuple containing two axes objects representing the scatter plots.
-        """
-
-        FullTriangle = self.FullTriangle.Cum
-        years = np.array(self.FullTriangle.years)
-
-        n_row, n_col = FullTriangle.shape
-        j = dev
-
-        x = FullTriangle[:n_row - j - 1, j]
-        y = FullTriangle[:n_row - j - 1, j + 1]
-        yrs = years[:n_row - j - 1]
-
-        x_est = FullTriangle[n_row - j - 1:, j]
-        y_est = FullTriangle[n_row - j - 1:, j + 1]
-        yrs_est = years[n_row - j - 1:]
-        l = np.arange(0, max(max(x), max(x_est)) * 1.05)
-
-        fig, (ax, axx) = plt.subplots(1, 2)
-        fig.suptitle(f'Testing Linearity on development dev = {j}', fontsize=20, fontname='serif')
-        fig.set_size_inches(10, 5)
-
-        ax.scatter(x=x, y=y, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-        ax.scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-        ax.plot(l, self.DevFactors[j] * l, linestyle='-', color='purple')
-
-        ax.set_xlabel('Cumul at year i')
-        ax.set_ylabel('Next Cumul at year i')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-        axx.scatter(x=yrs, y=y / x, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-        axx.scatter(x=yrs_est, y=y_est / x_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-        axx.plot(years, self.DevFactors[j] * np.ones_like(years), linestyle='--', color='purple')
-
-        axx.set_xlabel('Cumul at year i')
-        axx.set_ylabel('Next Cumul at year i')
-        axx.legend(loc='upper right')
-        axx.grid()
-
-        if path is not None:
-            fig.savefig(path)
-
-        return (ax, axx)
-
-    def Plot_all(self, path=None):
-        """
-        Plot the relationship between cumulative values for all development periods 
-        and the next cumulative values at year i+1 for each development period.
-
-        Args:
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            None
-        """
-
-        FullTriangle = self.FullTriangle.Cum
-        years = np.array(self.FullTriangle.years)
-        n_row, n_col = FullTriangle.shape
-
-        fig, ax = plt.subplots(n_row - 1, 2, gridspec_kw={'hspace': 0.2, 'wspace': 0.2})
-        fig.set_size_inches(10, 5 * (n_row - 1))
-
-        for j in range(n_row - 1):
-            x = FullTriangle[:n_row - j - 1, j]
-            y = FullTriangle[:n_row - j - 1, j + 1]
-            yrs = years[:n_row - j - 1]
-            x_est = FullTriangle[n_row - j - 1:, j]
-            y_est = FullTriangle[n_row - j - 1:, j + 1]
-            yrs_est = years[n_row - j - 1:]
-            l = np.arange(0, max(max(x), max(x_est)) * 1.05)
-
-            ax[j, 0].scatter(x=x, y=y, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-            ax[j, 0].scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-            ax[j, 0].plot(l, self.DevFactors[j] * l, linestyle='-', color='purple')
-            ax[j, 0].set_xlabel('Cumul at year i')
-            ax[j, 0].set_ylabel('Next Cumul at year i')
-            ax[j, 0].legend(loc='upper left')
-            ax[j, 0].grid()
-            ax[j, 0].set_title(f'Plotting cumuls for dev {j}')
-
-            ax[j, 1].scatter(x=yrs, y=y / x, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-            ax[j, 1].scatter(x=yrs_est, y=y_est / x_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-            ax[j, 1].plot(years, self.DevFactors[j] * np.ones_like(years), linestyle='--', color='purple')
-            ax[j, 1].set_xlabel('Cumul at year i')
-            ax[j, 1].set_ylabel('Next Cumul at year i')
-            ax[j, 1].legend(loc='upper right')
-            ax[j, 1].grid()
-            ax[j, 1].set_title(f'Plotting dev factors for dev {j}')
-
-        if path is not None:
-            fig.savefig(path)
 
     def Provisions(self):
         """
@@ -225,34 +121,6 @@ class ChainLadder:
             "Year": self.FullTriangle.years,
             "Provision": prov
         })
-
-    def Plot_Provisions(self, path=None):
-        """
-        Plot the evolution of provisions over the years.
-
-        Args:
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            None
-        """
-
-        data = self.Provisions()
-
-        fig, ax = plt.subplots()
-        fig.suptitle(f'Evolution of Provisions by years', fontsize=20, fontname='serif')
-        fig.set_size_inches(10, 10)
-
-        ax.scatter(x=data['Year'], y=data['Provision'], marker='*', c='blue', alpha=0.8, s=100, label="Provisions")
-        ax.plot(data['Year'], data['Provision'], linestyle='--', c='blue', alpha=0.5)
-
-        ax.set_xlabel('Years')
-        ax.set_ylabel('Provisions')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-        if path is not None:
-            fig.savefig(path)
 
     def __str__(self):
         """
@@ -524,114 +392,6 @@ class ChainMackGeneral:
         self.Deviations = Sigmas
         self.FullTriangle = Triangle(years=triangle.years, data=FullTriangle, isCumul=True)
 
-    def Plot_by_dev(self, dev, path=None):
-        """
-        Plot the relationship between cumulative values and the next cumulative values
-        for a specific development period using the ChainMackGeneral method.
-
-        Args:
-            dev (int): The development period to plot.
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            None
-        """
-
-        FullTriangle = self.FullTriangle.Cum
-        years = np.array(self.FullTriangle.years)
-
-        n_row, n_col = FullTriangle.shape
-        j = dev
-
-        x = FullTriangle[:n_row - j - 1, j]
-        y = FullTriangle[:n_row - j - 1, j + 1]
-        yrs = years[:n_row - j - 1]
-
-        x_est = FullTriangle[n_row - j - 1:, j]
-        y_est = FullTriangle[n_row - j - 1:, j + 1]
-        yrs_est = years[n_row - j - 1:]
-        l = np.arange(0, max(max(x), max(x_est)) * 1.05)
-
-        fig, (ax, axx) = plt.subplots(1, 2)
-        fig.suptitle(f'Testing Linearity on development dev = {j}', fontsize=20, fontname='serif')
-        fig.set_size_inches(10, 5)
-
-        ax.scatter(x=x, y=y, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-        ax.scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-        ax.plot(l, self.DevFactors[j] * l, linestyle='-', color='purple')
-        ax.fill_between(l, self.DevFactors[j] * l + 1.95 * self.Deviations[j] * np.sqrt(l),
-                        self.DevFactors[j] * l - 1.95 * self.Deviations[j] * np.sqrt(l),
-                        color='gray', alpha=0.3, label='Confidence interval')
-
-        ax.set_xlabel('Cumul at year i')
-        ax.set_ylabel('Next Cumul at year i')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-        axx.scatter(x=yrs, y=y / x, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-        axx.scatter(x=yrs_est, y=y_est / x_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-        axx.plot(years, self.DevFactors[j] * np.ones_like(years), linestyle='--', color='purple')
-
-        axx.set_xlabel('Cumul at year i')
-        axx.set_ylabel('Next Cumul at year i')
-        axx.legend(loc='upper right')
-        axx.grid()
-
-        if path is not None:
-            fig.savefig(path)
-
-    def Plot_all(self, path=None):
-        """
-        Plot the relationship between cumulative values and the next cumulative values
-        for all development periods using the ChainMackGeneral method.
-
-        Args:
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            None
-        """
-
-        FullTriangle = self.FullTriangle.Cum
-        years = np.array(self.FullTriangle.years)
-        n_row, n_col = FullTriangle.shape
-
-        fig, ax = plt.subplots(n_row - 1, 2, gridspec_kw={'hspace': 0.2, 'wspace': 0.2})
-        fig.set_size_inches(10, 5 * (n_row - 1))
-
-        for j in range(n_row - 1):
-            x = FullTriangle[:n_row - j - 1, j]
-            y = FullTriangle[:n_row - j - 1, j + 1]
-            yrs = years[:n_row - j - 1]
-            x_est = FullTriangle[n_row - j - 1:, j]
-            y_est = FullTriangle[n_row - j - 1:, j + 1]
-            yrs_est = years[n_row - j - 1:]
-            l = np.arange(0, max(max(x), max(x_est)) * 1.05)
-
-            ax[j, 0].scatter(x=x, y=y, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-            ax[j, 0].scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-            ax[j, 0].plot(l, self.DevFactors[j] * l, linestyle='-', color='purple')
-            ax[j, 0].fill_between(l, self.DevFactors[j] * l + 1.95 * self.Deviations[j] * np.sqrt(l),
-                                   self.DevFactors[j] * l - 1.95 * self.Deviations[j] * np.sqrt(l),
-                                   color='gray', alpha=0.3, label='Confidence interval')
-            ax[j, 0].set_xlabel('Cumul at year i')
-            ax[j, 0].set_ylabel('Next Cumul at year i')
-            ax[j, 0].legend(loc='upper left')
-            ax[j, 0].grid()
-            ax[j, 0].set_title(f'Plotting cumuls for dev {j}')
-
-            ax[j, 1].scatter(x=yrs, y=y / x, marker='*', c='blue', alpha=0.8, s=100, label="True value")
-            ax[j, 1].scatter(x=yrs_est, y=y_est / x_est, marker='*', c='red', alpha=0.8, s=100, label="Estimated value")
-            ax[j, 1].plot(years, self.DevFactors[j] * np.ones_like(years), linestyle='--', color='purple')
-            ax[j, 1].set_xlabel('Cumul at year i')
-            ax[j, 1].set_ylabel('Next Cumul at year i')
-            ax[j, 1].legend(loc='upper right')
-            ax[j, 1].grid()
-            ax[j, 1].set_title(f'Plotting dev factors for dev {j}')
-
-        if path is not None:
-            fig.savefig(path)
-
     def Provisions(self):
         """
         Calculate the provisions for each year based on the fitted model.
@@ -658,36 +418,6 @@ class ChainMackGeneral:
             "MSE": mses
         })
 
-    def Plot_Provisions(self, path=None):
-        """
-        Plot the evolution of provisions over the years.
-
-        Args:
-            path (str, optional): Path to save the plot image. Defaults to None.
-
-        Returns:
-            None
-        """
-
-        data = self.Provisions()
-
-        fig, ax = plt.subplots()
-        fig.suptitle(f'Evolution of Provisions by years', fontsize=20, fontname='serif')
-        fig.set_size_inches(10, 10)
-
-        ax.scatter(x=data['Year'], y=data['Provision'], marker='*', c='blue', alpha=0.8, s=100, label="Provisions")
-        ax.plot(data['Year'], data['Provision'], linestyle='--', c='blue', alpha=0.5)
-
-        ax.fill_between(data['Year'], data['Provision'] - 1.95 * data['MSE'], data['Provision'] + 1.95 * data['MSE'],
-                        color='gray', alpha=0.3, label='Confidence interval')
-
-        ax.set_xlabel('Years')
-        ax.set_ylabel('Provisions')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-        if path is not None:
-            fig.savefig(path)
 
     def __str__(self):
         """
@@ -849,92 +579,6 @@ class ChainLadderBoot :
         self.FullTriangle = Triangle(years=triangle.years,data=FullTriangle,isCumul=True) 
 
 
-
-    def Plot_by_dev(self,dev,path=None) : 
-        FullTriangle = self.FullTriangle.Cum
-        years =np.array(self.FullTriangle.years)
-
-        n_row,n_col = FullTriangle.shape
-        j = dev
-
-        x =  FullTriangle[:n_row-j-1,j]  
-        y =  FullTriangle[:n_row-j-1,j+1]
-        yrs = years[:n_row-j-1]
-
-        x_est = FullTriangle[n_row-j-1:,j]  
-        y_est = FullTriangle[n_row-j-1:,j+1]
-        yrs_est = years[n_row-j-1:]
-        l = np.arange(0,max(max(x),max(x_est))*1.05)
-
-
-        fig, (ax,axx) = plt.subplots(1,2)
-        fig.suptitle(f'Testing Linearity on developpement dev = {j}', fontsize=20, fontname='serif')
-        fig.set_size_inches(10,5)
-
-        ax.scatter(x=x, y=y, marker='*', c='blue', alpha=0.8,s=100,label = "True value")
-        ax.scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8,s=100,label = "Estimated value")
-        ax.plot(l, self.DevFactors[j]*l ,linestyle='-',color = 'purple')
-
-        ax.set_xlabel('Cumul at year i')
-        ax.set_ylabel('Next Cumul at year i')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-        axx.scatter(x=yrs, y=y/x, marker='*', c='blue', alpha=0.8,s=100,label = "True value")
-        axx.scatter(x=yrs_est, y=y_est/x_est, marker='*', c='red', alpha=0.8,s=100,label = "Estimated value")
-        axx.plot(years, self.DevFactors[j]*np.ones_like(years) ,linestyle='--',color = 'purple')
-
-        axx.set_xlabel('Cumul at year i')
-        axx.set_ylabel('Next Cumul at year i')
-        axx.legend(loc='upper right')
-        axx.grid()
-
-        if path != None :
-            fig.savefig(path)
-        
-        return (ax,axx)
-
-    def Plot_all(self,path=None) :
-        FullTriangle = self.FullTriangle.Cum
-        years =np.array(self.FullTriangle.years)
-        n_row,n_col = FullTriangle.shape
-
-        fig, ax = plt.subplots(n_row-1,2,gridspec_kw={'hspace': 0.2, 'wspace': 0.2})
-        fig.set_size_inches(10,5*(n_row-1))
-        # fig.suptitle(f'Testing Linearity for all developpements', fontsize=10, fontname='serif')
-
-        for j in range(n_row-1) :
-            x =  FullTriangle[:n_row-j-1,j]  
-            y =  FullTriangle[:n_row-j-1,j+1]
-            yrs = years[:n_row-j-1]
-            x_est = FullTriangle[n_row-j-1:,j]  
-            y_est = FullTriangle[n_row-j-1:,j+1]
-            yrs_est = years[n_row-j-1:]
-            l = np.arange(0,max(max(x),max(x_est))*1.05)
-
-            ax[j,0].scatter(x=x, y=y, marker='*', c='blue', alpha=0.8,s=100,label = "True value")
-            ax[j,0].scatter(x=x_est, y=y_est, marker='*', c='red', alpha=0.8,s=100,label = "Estimated value")
-            ax[j,0].plot(l, self.DevFactors[j]*l ,linestyle='-',color = 'purple')
-            ax[j,0].set_xlabel('Cumul at year i')
-            ax[j,0].set_ylabel('Next Cumul at year i')
-            ax[j,0].legend(loc='upper left')
-            ax[j,0].grid()
-            ax[j,0].set_title(f'Plotting cumuls for dev {j}')
-
-
-            ax[j,1].scatter(x=yrs, y=y/x, marker='*', c='blue', alpha=0.8,s=100,label = "True value")
-            ax[j,1].scatter(x=yrs_est, y=y_est/x_est, marker='*', c='red', alpha=0.8,s=100,label = "Estimated value")
-            ax[j,1].plot(years, self.DevFactors[j]*np.ones_like(years) ,linestyle='--',color = 'purple')
-            ax[j,1].set_xlabel('Cumul at year i')
-            ax[j,1].set_ylabel('Next Cumul at year i')
-            ax[j,1].legend(loc='upper right')
-            ax[j,1].grid()
-            ax[j,1].set_title(f'Plotting dev factrs for dev {j}')
-
-        if path != None :
-            fig.savefig(path)
-
-         
     def Provisions(self) : 
         FullTriangle = self.FullTriangle.Cum
         n_row,n_col = FullTriangle.shape
@@ -945,26 +589,6 @@ class ChainLadderBoot :
             "Year" : self.FullTriangle.years,
             "Provision" : prov
         })
-
-    def Plot_Provisions(self,path=None) : 
-        data = self.Provisions()
-
-        fig, ax = plt.subplots()
-        fig.suptitle(f'Evolution of Provisions by years', fontsize=20, fontname='serif')
-        fig.set_size_inches(10,10)
-
-        ax.scatter(x=data['Year'], y=data['Provision'], marker='*', c='blue', alpha=0.8,s=100,label = "Provisions")
-        ax.plot(data['Year'], data['Provision'], linestyle='--', c='blue', alpha=0.5)
-
-        ax.set_xlabel('Years')
-        ax.set_ylabel('Provisions')
-        ax.legend(loc='upper left')
-        ax.grid()
-
-
-        if path != None :
-            fig.savefig(path)
-    
 
     def __str__(self) :
         return f"This is a BootStrap Chain Ladder Model, with {self.NumSim} with developpement factors : {self.DevFactors}\nAnd Full triangle estimated :\n{self.FullTriangle}"
