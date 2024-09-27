@@ -247,12 +247,9 @@ class ChainMack:
         for j in range(n_col - 1):
             DevFact[j] = np.sum(triangle.Cum[:n_row - j - 1, j + 1]) / np.sum(triangle.Cum[:n_row - j - 1, j])
             if j < n_col - 1 - 1:
-                # Sigmas[j] = np.sqrt(1 / (n_row - j - 1 - 1) * np.sum(
-                #     triangle.Cum[:(n_row - j - 1), j] * (triangle.Cum[:n_row - j - 1, j + 1]) / np.sum(
-                #         triangle.Cum[:n_row - j - 1, j] - DevFact[j]) ** 2))
-                Sigmas[j] = np.sqrt(1 / (n_row - j - 1 - 1)*
-                                    np.sum( triangle.Cum[:(n_row - j - 1), j]*(triangle.Cum[:n_row - j - 1, j + 1]/triangle.Cum[:n_row - j - 1, j] - DevFact[j] )**2 )
-                )
+                Sigmas[j] = np.sqrt(1 / (n_row - j - 2 )*
+                    np.sum( triangle.Cum[:n_row - j - 1, j]*(triangle.Cum[:n_row - j - 1, j + 1]/triangle.Cum[:n_row - j - 1, j] - DevFact[j] )**2 )/np.sum(triangle.Cum[:n_row - j - 1, j] )
+)
         Sigmas[n_col - 1 - 1] = min(min(Sigmas[n_col - 1 - 2], Sigmas[n_col - 1 - 3]),
                                      Sigmas[n_col - 1 - 2] ** 2 / Sigmas[n_col - 1 - 3])
 
