@@ -220,9 +220,11 @@ if goo:
         if chosen_data == "Best Estimate" : 
             st.dataframe(st.session_state.be_charge)
         elif chosen_data == "Risk Adjustement" : 
-            BE_simulations = SimulateBE(st.session_state.model_reg,st.session_state.model_charge,st.session_state.taux if uploaded_courbe_taux is not None else None  ,num_simulation, act = uploaded_courbe_taux is not None, charge = True)
-            Plot_RiskAdjustement(BE_simulations,confidence_alpha)
-            st.pyplot(plt)
+            if method == "London Chain" : st.warning("Risk Adjustement is not yet supported for London Chain")
+            else : 
+                BE_simulations = SimulateBE(st.session_state.model_reg,st.session_state.model_charge,st.session_state.taux if uploaded_courbe_taux is not None else None  ,num_simulation, act = uploaded_courbe_taux is not None, charge = True)
+                Plot_RiskAdjustement(BE_simulations,confidence_alpha)
+                st.pyplot(plt)
         else : 
             st.info("Under construction")
     else : 
