@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np 
 
-from algo.triangleCumule  import execute, mettre_nan_sous_deuxieme_diagonale
-from algo.ChainModels import Triangle,ChainMack,ChainLondon
+from algo.ChainModels import Triangle,ChainMack,ChainLondon,ChainGLM
 from algo.bestEstimate import calculate_be_actualise,calculate_be_tables
-from algo.riskAdjustment import execute as RA
+from algo.riskAdjustment import SimulateBE, Plot_RiskAdjustement, Calc_RiskAdjustement
+
+import matplotlib.pyplot as plt 
 
 # Set the page config
 st.set_page_config(page_title="Reserving Application", layout="wide")
@@ -25,7 +26,7 @@ def parse_contents(uploaded_file):
     except Exception as e:
         st.error(f"Error processing file: {str(e)}")
         return None
-# Function to transform triange to data frame : 
+
 def tr2df(triangle, cumul=True) :
     if cumul : 
         df = pd.DataFrame(triangle.Cum).assign(
@@ -48,13 +49,20 @@ uploaded_courbe_taux = st.sidebar.file_uploader("Upload data: courbe de taux", t
 st.sidebar.header("Settings")
 method = st.sidebar.selectbox(
     "Choose method",
-    options=["Mack Chain Ladder", "Bootstrap", "London Chain"]
+    options=["Mack Chain Ladder", "London Chain", "GLM"]
+)
+if method == "GLM" : 
+    distribution = st.sidebar.selectbox(
+        "Choose Distribution", 
+    options=["poisson", "gamma", "normal"]
+    )
+
+simmethod = st.sidebar.selectbox(
+    "Simulation Method ? ",
+    options=["Bootstrap","Parametric Distribution"]
 )
 
-
 if st.sidebar.button("Do Calculation"):
-    data_reg = pd.DataFrame({})
-    data_charge = pd.DataFrame({})
 
 # --------- Defining Data ----------------------------
     if uploaded_reglement is None or uploaded_psap is None : 
@@ -64,7 +72,7 @@ if st.sidebar.button("Do Calculation"):
         reg_tr = Triangle(years=np.array(reglement_df.iloc[:,0]),data=np.array(reglement_df.iloc[:,1:]),isCumul=False)
 
         psap_df = parse_contents(uploaded_psap)
-        psap_tr = Triangle(years=np.array(psap_df.iloc[:,0]),data=np.array(psap_df.iloc[:,1:]),isCumul=True)
+        psap_tr = Triangle(years=np.array(psap_df.iloc[:,0]),data=np.array(psap_df.iloc[:,1:]),isCumul=False) # should be true if already cumuled
         charge_tr = Triangle(years=reg_tr.years,data=reg_tr.Cum+psap_tr.Cum,isCumul=True)
 
         # Making the data Global variables
@@ -90,9 +98,18 @@ if st.sidebar.button("Do Calculation"):
             model_charge = ChainLondon() 
             model_charge.fit(st.session_state.charge_tr)
             st.session_state.model_charge = model_charge 
+        elif method == 'GLM' : 
+            # For reglement triangle : 
+            model_reg = ChainGLM(distribution=distribution)
+            model_reg.fit(st.session_state.reg_tr)
+            st.session_state.model_reg = model_reg 
+            # For charge triangle    :
+            model_charge = ChainGLM(distribution=distribution)
+            model_charge.fit(st.session_state.charge_tr)
+            st.session_state.model_charge = model_charge 
 
-        elif method == 'Bootstrap' : 
-            st.info("Still under construction")
+        else : 
+            st.warning("Choose method :_)")
 
 # --------- Yield Curve   -----------------------------
         taux_df = parse_contents(uploaded_courbe_taux) 
@@ -118,7 +135,7 @@ col1, col2, col3 = st.columns([1, 1, 1])
 with col1:
     chosen_output = st.selectbox(
     "Choose Data to show : ",
-    options=["Inputed Data", "Model", "Bilan"]
+    options=["Inputed Data", "Model", "LIC"]
 )
 
 with col2: 
@@ -136,14 +153,18 @@ with col2:
         "Choose Data to show : ",
         options=["Model Parameters","Fitted Triangle [cumulative]", "Fitted Triangle [increments]", "Reserves"]   )
 
-    elif chosen_output == "Bilan" : 
+    elif chosen_output == "LIC" : 
         chosen_data = st.selectbox(
         "Choose Componant to show : ",
-        options=["Best Estimate","Total Bilan"]   )
+        options=["Best Estimate","Risk Adjustement", "LIC"]   )
+
 
 with col3: 
     goo = st.button("Goooo")
 
+if chosen_output == "LIC" and chosen_data == "Risk Adjustement" :
+    num_simulation = st.number_input("Enter number of simulations:", min_value=100, max_value=100_000, value=100, step=10)
+    confidence_alpha = st.slider("Select Confidence:", min_value=0.7, max_value=1.0, value=0.8, step=0.01)
 
 if goo:
     if chosen_output == "Inputed Data" : 
@@ -173,16 +194,18 @@ if goo:
                     'Devs Factors': model.DevFactors,
                     'Devs Deviations': model.Deviations
                 })
+                st.dataframe(summary_fitting)
             elif method == 'London Chain' : 
                 summary_fitting = pd.DataFrame({
                     'Devs': [i for i in range(model.Intercepts.shape[0])],
                     'Devs Intercepts': model.Intercepts,
                     'Devs Slopes': model.Slopes
                 })
-            elif method == 'Bootstrap' : 
-                st.info("Still under construction")
-            
-            st.dataframe(summary_fitting)
+                st.dataframe(summary_fitting)
+
+            elif method == 'GLM' : 
+                summary_html = model.glmresult.summary().as_html()
+                st.markdown(summary_html, unsafe_allow_html=True)
 
         elif chosen_thing == "Fitted Triangle [cumulative]":
             st.dataframe(tr2df(model.FullTriangle,cumul=True)) 
@@ -192,25 +215,17 @@ if goo:
             st.dataframe(model.Provisions())
         else :
             st.warning("Plz Choose Data to Show !!")
-    elif chosen_output == "Bilan" : 
+
+    elif chosen_output == "LIC" : 
         if chosen_data == "Best Estimate" : 
             st.dataframe(st.session_state.be_charge)
+        elif chosen_data == "Risk Adjustement" : 
+            BE_simulations = SimulateBE(st.session_state.model_reg,st.session_state.model_charge,st.session_state.taux if uploaded_courbe_taux is not None else None  ,num_simulation, act = uploaded_courbe_taux is not None, charge = True)
+            Plot_RiskAdjustement(BE_simulations,confidence_alpha)
+            st.pyplot(plt)
         else : 
-            if method == "Bootstrap" :
-                Ftriangle_reg    = tr2df(st.session_state.model_reg.FullTriangle)
-                Ftriangle_charge = tr2df(st.session_state.model_charge.FullTriangle)
-                alpha = st.slider('Select Confidence:', min_value=0.7, max_value=1.0, value=0.8, step=0.01)
-                ra = RA(Ftriangle_charge, Ftriangle_reg,st.session_state.taux,alpha)
-                df = pd.DataFrame({
-                            "BE" :  [ra[2]],
-                            "RA" :  [ra[-1]], 
-                            "CSM" : [-ra[2] - ra[-1]]
-                        })
-                st.dataframe(df)
-            else :
-                st.warning("Risk adjustment is only working with Bootstrap method")  
+            st.info("Under construction")
     else : 
         st.warning("Plz Choose Output to Show !!")
-
 
 # python -m streamlit run app.py

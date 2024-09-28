@@ -88,21 +88,37 @@ class ChainLadder:
             None
         """
 
-        # Calculate development factors
         n_row, n_col = triangle.Cum.shape
         DevFact = np.zeros(n_col - 1)
         for j in range(n_col - 1):
             DevFact[j] = np.sum(triangle.Cum[:n_row - j - 1, j + 1]) / np.sum(triangle.Cum[:n_row - j - 1, j])
-
-        # Project full triangle using development factors
         FullTriangle = triangle.Cum.copy()
         for j in range(n_col - 1):
             FullTriangle[n_row - j - 1:, j + 1] = FullTriangle[n_row - j - 1:, j] * DevFact[j]
-
-        # Update class attributes
         self.DevFactors = DevFact
         self.FullTriangle = Triangle(years=triangle.years, data=FullTriangle, isCumul=True)
 
+    def BackEstimates(self) :
+        data  = self.FullTriangle.Cum.copy() 
+        n_row,n_col = data.shape
+        for i in range(n_row):
+            for j in range(n_row-i-1, 0, -1):  
+                data[i, j-1] = data[i, j] / self.DevFactors[j-1]
+        return Triangle(years=self.FullTriangle.years,data=data,isCumul=True)
+
+    def Residuals(self) : 
+        data  = self.FullTriangle.Cum.copy() 
+        n_row,n_col = data.shape
+        residual = (self.BackEstimates() - data)/np.sqrt(data)
+        return residual
+
+    def Simulate(self) : 
+        resids = self.Residuals()
+        flattened = resids.flatten()
+        np.random.shuffle(flattened)
+        resids = flattened.reshape(resids.shape)
+        simulation = self.BackEstimates().Inc + np.sqrt(resids)*self.BackEstimates().Inc
+        return Triangle(years=self.FullTriangle.years,data=simulation,isCumul=True)
 
     def Provisions(self):
         """
@@ -210,6 +226,7 @@ class ChainLondon:
         """
         return f"This is a Chain London Model, with Slope factors: {self.Slopes},\nIntercept factors: {self.Intercepts}\nAnd Full triangle estimated:\n{self.FullTriangle}"
 
+
 class ChainMack:
     """
     ChainMack class for performing Mack Chain Ladder analysis on triangle data.
@@ -243,8 +260,6 @@ class ChainMack:
         n_row, n_col = triangle.Cum.shape
         DevFact = np.zeros(n_col - 1)
         Sigmas  = np.zeros(n_col - 1)
-        SigmaRi = np.zeros(n_col - 1)
-# some changes in Dev Sigmas :) 
         for j in range(n_col - 1):
             DevFact[j] = np.sum(triangle.Cum[:n_row - j - 1, j + 1]) / np.sum(triangle.Cum[:n_row - j - 1, j])
             if j < n_col - 1 - 1:
@@ -259,8 +274,48 @@ class ChainMack:
 
         self.DevFactors = DevFact
         self.Deviations = Sigmas
-        self.sigmaRi    = SigmaRi
         self.FullTriangle = Triangle(years=triangle.years, data=FullTriangle, isCumul=True)
+
+    def refit(self, triangle:Triangle) : 
+        n_row, n_col = triangle.Cum.shape
+        DevFact = np.zeros(n_col - 1)
+        Sigmas  = np.zeros(n_col - 1)
+        for j in range(n_col - 1):
+            DevFact[j] = np.sum(triangle.Cum[:n_row - j - 1, j + 1]) / np.sum(triangle.Cum[:n_row - j - 1, j])
+            if j < n_col - 1 - 1:
+                Sigmas[j] = np.sqrt(1 / (n_row - j - 2 )*np.sum( triangle.Cum[:n_row - j - 1, j]*(triangle.Cum[:n_row - j - 1, j + 1]/triangle.Cum[:n_row - j - 1, j] - DevFact[j] )**2 ))
+                
+        Sigmas[n_col - 1 - 1] = min(min(Sigmas[n_col - 1 - 2], Sigmas[n_col - 1 - 3]),
+                                     Sigmas[n_col - 1 - 2] ** 2 / Sigmas[n_col - 1 - 3])
+
+        FullTriangle = triangle.Cum.copy()
+        for i in range(n_row - 1, n_col - n_row - 1, -1):
+            FullTriangle[i, n_row - i:] = FullTriangle[i, n_row - i - 1] * np.cumprod(DevFact[n_row - i - 1:])
+
+        return Triangle(years=triangle.years, data=FullTriangle, isCumul=True)
+
+    def BackEstimates(self) :
+        data  = self.FullTriangle.Cum.copy() 
+        n_row,n_col = data.shape
+        for i in range(n_row):
+            for j in range(n_row-i-1, 0, -1):  
+                data[i, j-1] = data[i, j] / self.DevFactors[j-1]
+        return Triangle(years=self.FullTriangle.years,data=data,isCumul=True)
+
+    def Residuals(self) : 
+        data  = self.FullTriangle.Inc.copy() 
+        residual = (self.BackEstimates().Inc - data)/np.sqrt(data)
+        return residual
+
+    def Simulate(self) : 
+        resids = self.Residuals()
+        non_null_elements = resids[resids != 0]
+        np.random.shuffle(non_null_elements)
+        shuffled_matrix = resids.copy()
+        shuffled_matrix[resids != 0] = non_null_elements
+        simulation = self.BackEstimates().Inc + np.sqrt(self.BackEstimates().Inc)*shuffled_matrix
+        return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=False))
+
 
     def Provisions(self):
         """
@@ -301,6 +356,7 @@ class ChainMack:
             str: String representation of the object.
         """
         return f"This is a Chain Mack Model, with development factors: {self.DevFactors}\nAnd Deviations: {self.Deviations}\nAnd Full triangle estimated:\n{self.FullTriangle}"
+
 
 class ChainMackGeneral:
     """
@@ -446,8 +502,6 @@ class ChainGLM :
         self.EffectDev    = None
         self.EffectYear   = None
         self.FullTriangle = None
-        self.Residuals    = None
-        self.VarPred      = None
         self.glmresult    = None
         self.dist         = distribution
         
@@ -463,41 +517,107 @@ class ChainGLM :
         """
 
         if self.dist == "poisson":
-            family = sm.families.Poisson(link=sm.families.links.Log())
+            family = sm.families.Poisson (link=sm.families.links.Log())
+            iscumul = False
         elif self.dist == "gamma":
-            family = sm.families.Gamma(link=sm.families.links.Log())
+            family = sm.families.Gamma   (link=sm.families.links.Log())
+            iscumul = False
+        elif self.dist == "normal":
+            family = sm.families.Gaussian(link=sm.families.links.Log())
+            iscumul = False
 
-        # Calculate development factors
+
         n_row, n_col = triangle.Cum.shape
-
         df = pd.DataFrame({
             'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
             'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
-            'incr': triangle.Inc.flatten()
+            'value': triangle.Cum.flatten() if iscumul else triangle.Inc.flatten()
         })
 
         df['year'] = pd.Categorical(df['year'])
-        df['dev'] = pd.Categorical(df['dev']  )
+        df['dev']  = pd.Categorical(df['dev'] )
 
-        model = sm.GLM.from_formula('incr ~ year + dev', data=df.dropna(), family=family, missing='drop')
+        model = sm.GLM.from_formula('value ~ year + dev', data=df.dropna(), family=family, missing='drop')
         result = model.fit()
 
-        k = n_col*(n_row+n_row-n_col + 1)/2
-        p = n_row+n_col + 1
-
         df['predictions'] =  result.predict(df)
-        df['residuals']   = result.resid_pearson/np.sqrt(result.scale)*np.sqrt(k/(k-p+2))
-        df['variance']    =  np.nan
-        df.loc[~np.isnan(df['incr']), 'variance']= result.get_prediction().var_pred
-        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=False)
-        self.Residuals  = df.pivot(index='year', columns='dev', values='residuals').values
-        self.VarPred    = df.pivot(index='year', columns='dev', values='variance').values
+        df['dev'] = df['dev'].cat.codes
+        df['year'] = df['year'].cat.codes
+        df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
+
+        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
         self.Intercept  = result.params[0]
         self.EffectDev  = result.params[n_row:]
         self.EffectYear = result.params[1:n_row] 
-
         self.glmresult = result
 
+    def refit(self, triangle:Triangle) : 
+        if self.dist == "poisson":
+            family = sm.families.Poisson (link=sm.families.links.Log())
+            iscumul = False
+        elif self.dist == "gamma":
+            family = sm.families.Gamma   (link=sm.families.links.Log())
+            iscumul = True
+        elif self.dist == "normal":
+            family = sm.families.Gaussian(link=sm.families.links.Log())
+            iscumul = True
+
+        n_row, n_col = triangle.Cum.shape
+        df = pd.DataFrame({
+            'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
+            'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
+            'value': triangle.Cum.flatten() if iscumul else triangle.Inc.flatten()
+        })
+
+        df['year'] = pd.Categorical(df['year'])
+        df['dev']  = pd.Categorical(df['dev']  )
+
+        model = sm.GLM.from_formula('value ~ year + dev', data=df.dropna(), family=family, missing='drop')
+        result = model.fit()
+        
+        df['predictions'] =  result.predict(df)
+        df['dev'] = df['dev'].cat.codes
+        df['year'] = df['year'].cat.codes
+        df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
+
+        return Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
+
+    def BackEstimates(self) :
+        if self.dist == "poisson":
+            iscumul = False
+        elif self.dist == "gamma":
+            iscumul = True
+        elif self.dist == "normal":
+            iscumul = True
+
+        df = pd.DataFrame({
+            'year': np.repeat(range(self.FullTriangle.Inc.shape[0]), self.FullTriangle.Inc.shape[1]),
+            'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
+        })
+
+        df['predictions'] =  self.glmresult.predict(df)
+
+        return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
+    
+    def Residuals(self) : 
+        n_row, n_col = self.FullTriangle.Inc.shape
+        df = pd.DataFrame({
+            'year': np.repeat(range(self.FullTriangle.Inc.shape[0]), self.FullTriangle.Inc.shape[1]),
+            'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
+        })
+        k = n_col*(n_row+n_row-n_col + 1)/2
+        p = n_row+n_col + 1
+        df['residuals']   = self.glmresult.resid_pearson/np.sqrt(self.glmresult.scale)*np.sqrt(k/(k-p+2))
+        return  df.pivot(index='year', columns='dev', values='residuals').values
+
+    def Simulate(self) : 
+        resids = self.Residuals()
+        mask = (resids != 0) & (~np.isnan(resids))
+        shuffled_matrix = resids.copy()
+        shuffled_matrix[mask] = np.random.permutation(resids[mask])
+        simulation = self.BackEstimates().Inc + np.sqrt(self.BackEstimates().Inc)*shuffled_matrix
+        simulation = np.where(simulation < self.BackEstimates().Inc, self.BackEstimates().Inc, simulation)    
+        return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=False))
 
     def Provisions(self):
         """
@@ -516,6 +636,7 @@ class ChainGLM :
             "Year": self.FullTriangle.years,
             "Provision": prov
         })
+    
     def __str__(self):
         """
         Return a string representation of the GLM Chain Model object.
@@ -525,72 +646,4 @@ class ChainGLM :
         """
         return f"This is a GLM Chain Model, with distribution {self.dist}\nwith intercept: {self.Intercept}\n,with years effect: \n{self.EffectYear}\n,with developement effect: \n{self.EffectYear}\nAnd Full triangle estimated:\n{self.FullTriangle}"
 
-class ChainLadderBoot : 
-    def __init__(self,Simulation_Number) :
-        self.DevFactors     = None 
-        self.FullTriangle   = None 
-        self.SimProvisions  = None
-        self.SimProvisionsTotal = None
-        self.glmchain       = None
-        self.NumSim         = Simulation_Number
-
-    def fit(self,triangle:Triangle,num_simulations = None) : 
-        if num_simulations == None :
-            num_simulations = self.NumSim 
-        glm = ChainGLM() 
-        glm.fit(triangle)
-        self.glmchain = glm
-        
-        Residus = glm.Residuals
-        Predus  = glm.FullTriangle.Inc
-        Varus   = glm.VarPred 
-
-        Factors = []
-        SimProvisions = [] 
-        Haha = np.array(Residus[:-1,:-1].reshape(1,(Residus.shape[0]-1)*(Residus.shape[1]-1)))[0].copy()
-        for _ in range(num_simulations) :
-            NonNullElements = [y for y in Haha if not np.isnan(y) ]
-            shuffle(NonNullElements)
-            Y = Residus.copy()
-            cpt = 0 
-            for i in range(Y[:-1,:-1].shape[0]) : 
-                for j in range(Y[:-1,:-1].shape[1]) : 
-                    if not np.isnan(Y[i,j]) :
-                        Y[i,j] = NonNullElements[cpt]
-                        cpt+=1
-                        
-            Z_b = Predus + np.multiply(np.sqrt(Varus),Y)
-
-            chainSim = ChainLadder()
-            chainSim.fit(Triangle(years=triangle.years,data=Z_b,isCumul=False))   
-            Factors.append(chainSim.DevFactors)
-            SimProvisions.append(chainSim.Provisions()['Provision'].values)
-
-        Factors = np.array(Factors)
-        self.DevFactors  = np.mean(Factors,axis=0)
-        self.SimProvisions = np.array(SimProvisions)
-        self.SimProvisionsTotal = np.sum(self.SimProvisions,axis=1)
-
-        
-        n_row,n_col = triangle.shape
-        FullTriangle = triangle.Cum.copy()
-        for j in range(n_col-1) : 
-            FullTriangle[n_row-j-1:,j+1] = FullTriangle[n_row-j-1:,j]*self.DevFactors[j] 
-        
-        self.FullTriangle = Triangle(years=triangle.years,data=FullTriangle,isCumul=True) 
-
-
-    def Provisions(self) : 
-        FullTriangle = self.FullTriangle.Cum
-        n_row,n_col = FullTriangle.shape
-        prov = np.array([ 
-            FullTriangle[i,-1] - FullTriangle[i,n_row-i-1] for i in range(n_row)
-        ])
-        return pd.DataFrame({
-            "Year" : self.FullTriangle.years,
-            "Provision" : prov
-        })
-
-    def __str__(self) :
-        return f"This is a BootStrap Chain Ladder Model, with {self.NumSim} with developpement factors : {self.DevFactors}\nAnd Full triangle estimated :\n{self.FullTriangle}"
 

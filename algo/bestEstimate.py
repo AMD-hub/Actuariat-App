@@ -33,7 +33,7 @@ def calculate_be_tables(triangle_charge, triangle_reglements):
 
     # Creating the output tables
     be_charge = pd.DataFrame({
-        'Année_de_survenance':triangle_charge.iloc[:,0],
+        'Année_de_survenance': triangle_charge.iloc[:, 0],
         'PSAP DD': psap_dd_charge,
         'Charge ultime': last_col_charge,
         'Dernière charge': last_diag_charge,
@@ -42,7 +42,7 @@ def calculate_be_tables(triangle_charge, triangle_reglements):
     })
     
     be_reglement = pd.DataFrame({
-        'Année_de_survenance':triangle_charge.iloc[:,0],
+        'Année_de_survenance': triangle_charge.iloc[:, 0],
         'PSAP DD': psap_dd_charge,
         'Paiements à l\'ultime': last_col_reglements,
         'Paiements derniers': last_diag_reglements,
@@ -51,13 +51,13 @@ def calculate_be_tables(triangle_charge, triangle_reglements):
     })
 
     # Add a row for column sums
-    be_charge.loc['Total'] = be_charge.sum()
-    be_reglement.loc['Total'] = be_reglement.sum()
+    be_charge.loc[-1] = be_charge.sum()
+    be_reglement.loc[-1] = be_reglement.sum()
     
+    # Set the 'Année_de_survenance' column to -1 for the last row
+    be_reglement.at[-1, 'Année_de_survenance'] = -1
+    be_charge.at[-1, 'Année_de_survenance'] = -1
 
-    # Renommage de la dernière valeur de 'Année_de_survenance' en 'Total'
-    be_reglement.at['Total', 'Année_de_survenance'] = 'Total'
-    be_charge.at['Total', 'Année_de_survenance'] = 'Total'
     return be_charge, be_reglement
 
 
@@ -129,15 +129,12 @@ def calculate_be_actualise(triangle_charge, triangle_reglements, taux_zc):
             else:
                 C[i, j] = (régl_modifie[i, j] - régl_modifie[i, j-1]) / B[i]  # j-1 pour aligner les indices de B avec ceux de A
 
-      # Vérification de la somme des lignes de C et ajustement si nécessaire
+    # Vérification de la somme des lignes de C et ajustement si nécessaire
     for i in range(0, C.shape[0]):
         row_without_first_last = C[i, 1:-1]  # Exclure la première et la dernière colonne
         if np.all(np.isnan(row_without_first_last)):
         # Votre code pour traiter les cas où toutes les valeurs sont NaN
-
-           
             C[i, régl_modifie.shape[0] - i ] = 1
-       
 
     
     # Calculer les valeurs de Eij 
@@ -159,24 +156,22 @@ def calculate_be_actualise(triangle_charge, triangle_reglements, taux_zc):
     X = X[:, :-1]
     # Calculer la somme de chaque ligne de X pour la colonne 'BE'
     BE = np.nansum(X, axis=1)
-   # Répéter les valeurs de taux_zc pour correspondre au nombre de lignes dans BE
+    # Répéter les valeurs de taux_zc pour correspondre au nombre de lignes dans BE
     taux_zc_repeated = np.repeat(taux, len(BE) // len(taux) + 1)[:len(BE)]
 
     # Créer le tableau pandas avec les colonnes 'BE', 'taux_zc', et 'déflateur'
     tableau = pd.DataFrame({
-        'Année de survenance':triangle_reg[:,0] ,
+    'Année de survenance':triangle_reg[:,0] ,
     'BE': BE,
     'Taux_zc': taux_zc_repeated,
-    'Déflateur': [1 / (1 + taux_zc_repeated[i]) ** (i+1) for i in range(len(BE))]
-    
+    'Déflateur': [1 / (1 + taux_zc_repeated[i]) ** (i+1) for i in range(len(BE))] 
 })
+    
     # Transformer la colonne 'déflateur' en une ligne pour utiliser somme prod
     ligne_deflateur = tableau['Déflateur'].values
 
     # Calculer l'opération SOMMEPROD de chaque ligne de X avec la ligne 'déflateur'
     sommeprod = np.nansum(X *ligne_deflateur , axis=1)
-
-
 
     # Ajouter la sommeprod au tableau pandas
     tableau['BE actualisé'] = sommeprod
