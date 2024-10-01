@@ -39,6 +39,9 @@ def tr2df(triangle, cumul=True) :
 
     return df
 
+def check_positive(matrix) : 
+    return np.all(matrix[~np.isnan(matrix)] > 0)
+
 # Sidebar for file uploads and settings
 st.sidebar.title("Reserving Application")
 st.sidebar.image("assets/frs.png", width=300)
@@ -58,7 +61,7 @@ if method == "GLM" :
     )
 
 simmethod = st.sidebar.selectbox(
-    "Simulation Method ? ",
+    "Risk Estimation method ? ",
     options=["Bootstrap","Parametric Distribution"]
 )
 
@@ -72,7 +75,7 @@ if st.sidebar.button("Do Calculation"):
         reg_tr = Triangle(years=np.array(reglement_df.iloc[:,0]),data=np.array(reglement_df.iloc[:,1:]),isCumul=False)
 
         psap_df = parse_contents(uploaded_psap)
-        psap_tr = Triangle(years=np.array(psap_df.iloc[:,0]),data=np.array(psap_df.iloc[:,1:]),isCumul=False) # should be true if already cumuled
+        psap_tr = Triangle(years=np.array(psap_df.iloc[:,0]),data=np.array(psap_df.iloc[:,1:]),isCumul=True)
         charge_tr = Triangle(years=reg_tr.years,data=reg_tr.Cum+psap_tr.Cum,isCumul=True)
 
         # Making the data Global variables
@@ -99,15 +102,19 @@ if st.sidebar.button("Do Calculation"):
             model_charge.fit(st.session_state.charge_tr)
             st.session_state.model_charge = model_charge 
         elif method == 'GLM' : 
+            if check_positive(st.session_state.model_charge.Inc):
+                isIncrement = True 
+            else : 
+                isIncrement = False 
+                st.info("We did fit the GLM on cumulative charge triangle since incremental charge triangle involve negative values!")
             # For reglement triangle : 
             model_reg = ChainGLM(distribution=distribution)
             model_reg.fit(st.session_state.reg_tr)
             st.session_state.model_reg = model_reg 
             # For charge triangle    :
-            model_charge = ChainGLM(distribution=distribution)
+            model_charge = ChainGLM(distribution=distribution,IncrementalModel=isIncrement) 
             model_charge.fit(st.session_state.charge_tr)
             st.session_state.model_charge = model_charge 
-
         else : 
             st.warning("Choose method :_)")
 
@@ -222,7 +229,8 @@ if goo:
         elif chosen_data == "Risk Adjustement" : 
             if method == "London Chain" : st.warning("Risk Adjustement is not yet supported for London Chain")
             else : 
-                BE_simulations = SimulateBE(st.session_state.model_reg,st.session_state.model_charge,st.session_state.taux if uploaded_courbe_taux is not None else None  ,num_simulation, act = uploaded_courbe_taux is not None, charge = True)
+                if method == "Mack Chain Ladder" and simmethod == "Parametric Distribution" : st.info("We used Mack's standard error formula")    
+                BE_simulations = SimulateBE(st.session_state.model_reg,st.session_state.model_charge,st.session_state.taux if uploaded_courbe_taux is not None else None, num_simulation, act = uploaded_courbe_taux is not None, method = simmethod)
                 Plot_RiskAdjustement(BE_simulations,confidence_alpha)
                 st.pyplot(plt)
         else : 

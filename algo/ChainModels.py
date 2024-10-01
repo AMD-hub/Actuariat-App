@@ -5,8 +5,32 @@ from random import shuffle
 import statsmodels.api as sm
 
 
+
+
+def simulate_GLM(model_result,df) :
+    df['year'] = pd.Categorical(df['year'])
+    df['dev']  = pd.Categorical(df['dev'] )
+    X_custom = pd.get_dummies(df[['year', 'dev']], drop_first=True)
+    if 'const' not in model_result.params.index:
+        X_custom = sm.add_constant(X_custom, has_constant='add') # Create dummy variables
+    linear_predictor = np.dot(X_custom, model_result.params)
+    linear_predictor = np.array(linear_predictor,dtype=float)
+    link_function    = model_result.family.link.inverse
+    mu = link_function(linear_predictor)
+    if isinstance(model_result.family, sm.families.Gaussian):
+        y = mu + np.random.normal(scale=model_result.scale, size=X_custom.shape[0])
+    elif isinstance(model_result.family, sm.families.Poisson):
+        y = np.random.poisson(lam=mu, size=X_custom.shape[0])
+    elif isinstance(model_result.family, sm.families.Binomial):
+        y = np.random.binomial(1, p=mu, size=X_custom.shape[0])
+    else:
+        raise ValueError("Unsupported family: Only Gaussian, Poisson, and Binomial are implemented.")
+    simulated_data = pd.DataFrame(X_custom)
+    simulated_data['y'] = y
+    return simulated_data['y']
+
 class Triangle:
-    def __init__(self, years, data, isCumul=True):
+    def __init__(self, years, data, isCumul=True, inferior_nan = False):
         """
         Initialize a Triangle object.
 
@@ -22,6 +46,11 @@ class Triangle:
         else:
             dataCumul = data.cumsum(axis=1)
             dataIncrement = data
+        if inferior_nan == True : 
+            for i in range(data.shape[0]) : 
+                for j in range(data.shape[1]-i,data.shape[1]) : 
+                    dataIncrement[i,j]  = np.nan 
+                    dataCumul[i,j]      = np.nan
 
         self.Inc = dataIncrement
         self.Cum = dataCumul
@@ -226,7 +255,6 @@ class ChainLondon:
         """
         return f"This is a Chain London Model, with Slope factors: {self.Slopes},\nIntercept factors: {self.Intercepts}\nAnd Full triangle estimated:\n{self.FullTriangle}"
 
-
 class ChainMack:
     """
     ChainMack class for performing Mack Chain Ladder analysis on triangle data.
@@ -307,15 +335,24 @@ class ChainMack:
         residual = (self.BackEstimates().Inc - data)/np.sqrt(data)
         return residual
 
-    def Simulate(self) : 
-        resids = self.Residuals()
-        non_null_elements = resids[resids != 0]
-        np.random.shuffle(non_null_elements)
-        shuffled_matrix = resids.copy()
-        shuffled_matrix[resids != 0] = non_null_elements
-        simulation = self.BackEstimates().Inc + np.sqrt(self.BackEstimates().Inc)*shuffled_matrix
-        return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=False))
-
+    def Simulate(self,method = "Bootstrap") : 
+        if method == "Bootstrap" :
+            resids = self.Residuals()
+            non_null_elements = resids[resids != 0]
+            np.random.shuffle(non_null_elements)
+            shuffled_matrix = resids.copy()
+            shuffled_matrix[resids != 0] = non_null_elements
+            simulation = self.BackEstimates().Inc + np.sqrt(self.BackEstimates().Inc)*shuffled_matrix
+            return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=False))
+        else  : 
+            FullTriangle = self.FullTriangle.Cum.copy()
+            n_row, n_col = FullTriangle.shape
+            mses = self.Provisions()['MSE']
+            hatR = np.array([ FullTriangle[i, -1]  for i in range(n_row) ])
+            sigma = np.sqrt( np.log(1+ (mses/hatR)**2 ) )
+            mu    = np.log( hatR ) - sigma**2/2 
+            FullTriangle[:,-1] = np.exp( np.random.normal(mu,sigma) )  if np.any(sigma != 0) else mu
+            return Triangle(years=self.FullTriangle.years,data=FullTriangle,isCumul=True)
 
     def Provisions(self):
         """
@@ -356,7 +393,6 @@ class ChainMack:
             str: String representation of the object.
         """
         return f"This is a Chain Mack Model, with development factors: {self.DevFactors}\nAnd Deviations: {self.Deviations}\nAnd Full triangle estimated:\n{self.FullTriangle}"
-
 
 class ChainMackGeneral:
     """
@@ -494,7 +530,7 @@ class ChainGLM :
     Attributes:
         FullTriangle (Triangle): Triangle object containing the full development data after fitting.
     """
-    def __init__(self,distribution = 'poisson'):
+    def __init__(self,distribution = 'poisson',IncrementalModel = True):
         """
         Initializes an instance of the ChainGLM class.
         """
@@ -504,6 +540,7 @@ class ChainGLM :
         self.FullTriangle = None
         self.glmresult    = None
         self.dist         = distribution
+        self.IncrModel    = IncrementalModel
         
     def fit(self, triangle: Triangle):
         """
@@ -518,20 +555,17 @@ class ChainGLM :
 
         if self.dist == "poisson":
             family = sm.families.Poisson (link=sm.families.links.Log())
-            iscumul = False
         elif self.dist == "gamma":
             family = sm.families.Gamma   (link=sm.families.links.Log())
-            iscumul = False
         elif self.dist == "normal":
             family = sm.families.Gaussian(link=sm.families.links.Log())
-            iscumul = False
 
 
         n_row, n_col = triangle.Cum.shape
         df = pd.DataFrame({
             'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
             'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
-            'value': triangle.Cum.flatten() if iscumul else triangle.Inc.flatten()
+            'value': triangle.Cum.flatten() if self.IncrModel else triangle.Inc.flatten()
         })
 
         df['year'] = pd.Categorical(df['year'])
@@ -545,28 +579,25 @@ class ChainGLM :
         df['year'] = df['year'].cat.codes
         df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
 
-        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
+        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
         self.Intercept  = result.params[0]
         self.EffectDev  = result.params[n_row:]
         self.EffectYear = result.params[1:n_row] 
-        self.glmresult = result
+        self.glmresult  = result
 
     def refit(self, triangle:Triangle) : 
         if self.dist == "poisson":
             family = sm.families.Poisson (link=sm.families.links.Log())
-            iscumul = False
         elif self.dist == "gamma":
             family = sm.families.Gamma   (link=sm.families.links.Log())
-            iscumul = True
         elif self.dist == "normal":
             family = sm.families.Gaussian(link=sm.families.links.Log())
-            iscumul = True
 
         n_row, n_col = triangle.Cum.shape
         df = pd.DataFrame({
             'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
             'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
-            'value': triangle.Cum.flatten() if iscumul else triangle.Inc.flatten()
+            'value': triangle.Cum.flatten() if self.IncrModel else triangle.Inc.flatten()
         })
 
         df['year'] = pd.Categorical(df['year'])
@@ -580,24 +611,15 @@ class ChainGLM :
         df['year'] = df['year'].cat.codes
         df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
 
-        return Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
+        return Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
 
     def BackEstimates(self) :
-        if self.dist == "poisson":
-            iscumul = False
-        elif self.dist == "gamma":
-            iscumul = True
-        elif self.dist == "normal":
-            iscumul = True
-
         df = pd.DataFrame({
             'year': np.repeat(range(self.FullTriangle.Inc.shape[0]), self.FullTriangle.Inc.shape[1]),
             'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
         })
-
         df['predictions'] =  self.glmresult.predict(df)
-
-        return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=iscumul)
+        return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
     
     def Residuals(self) : 
         n_row, n_col = self.FullTriangle.Inc.shape
@@ -610,14 +632,27 @@ class ChainGLM :
         df['residuals']   = self.glmresult.resid_pearson/np.sqrt(self.glmresult.scale)*np.sqrt(k/(k-p+2))
         return  df.pivot(index='year', columns='dev', values='residuals').values
 
-    def Simulate(self) : 
-        resids = self.Residuals()
-        mask = (resids != 0) & (~np.isnan(resids))
-        shuffled_matrix = resids.copy()
-        shuffled_matrix[mask] = np.random.permutation(resids[mask])
-        simulation = self.BackEstimates().Inc + np.sqrt(self.BackEstimates().Inc)*shuffled_matrix
-        simulation = np.where(simulation < self.BackEstimates().Inc, self.BackEstimates().Inc, simulation)    
-        return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=False))
+    def Simulate(self,method = "Bootstrap" ) : 
+        if method == "Bootstrap" : 
+            resids = self.Residuals()
+            mask = (resids != 0) & (~np.isnan(resids))
+            shuffled_matrix = resids.copy()
+            shuffled_matrix[mask] = np.random.permutation(resids[mask])
+            estimates  = self.BackEstimates().Inc if self.IncrModel else self.BackEstimates().Cum
+            simulation = estimates + np.sqrt(estimates)*shuffled_matrix 
+            simulation = np.where(simulation < estimates, estimates, simulation)    
+            return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=self.IncrModel))
+        elif method == "Parametric Distribution" :
+            n_row, n_col = self.FullTriangle.Cum.shape
+            df = pd.DataFrame({
+                'year': np.repeat(range(self.FullTriangle.Inc.shape[0]), self.FullTriangle.Inc.shape[1]),
+                'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
+                'value': self.FullTriangle.Cum.flatten() if self.IncrModel else self.FullTriangle.Inc.flatten()
+            })
+            df['predictions'] =  simulate_GLM(self.glmresult, df[['year','dev']])
+            df['predictions'] = df['predictions'].astype(float)
+            df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
+            return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
 
     def Provisions(self):
         """
