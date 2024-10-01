@@ -565,7 +565,7 @@ class ChainGLM :
         df = pd.DataFrame({
             'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
             'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
-            'value': triangle.Cum.flatten() if self.IncrModel else triangle.Inc.flatten()
+            'value': triangle.Inc.flatten() if self.IncrModel else triangle.Cum.flatten()
         })
 
         df['year'] = pd.Categorical(df['year'])
@@ -579,7 +579,7 @@ class ChainGLM :
         df['year'] = df['year'].cat.codes
         df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
 
-        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
+        self.FullTriangle = Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul= not self.IncrModel)
         self.Intercept  = result.params[0]
         self.EffectDev  = result.params[n_row:]
         self.EffectYear = result.params[1:n_row] 
@@ -597,7 +597,7 @@ class ChainGLM :
         df = pd.DataFrame({
             'year': np.repeat(range(triangle.Inc.shape[0]), triangle.Inc.shape[1]),
             'dev': np.tile(range(triangle.Inc.shape[1]), triangle.Inc.shape[0]),
-            'value': triangle.Cum.flatten() if self.IncrModel else triangle.Inc.flatten()
+            'value': triangle.Inc.flatten() if self.IncrModel else triangle.Cum.flatten()
         })
 
         df['year'] = pd.Categorical(df['year'])
@@ -611,7 +611,7 @@ class ChainGLM :
         df['year'] = df['year'].cat.codes
         df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
 
-        return Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
+        return Triangle(triangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul= not self.IncrModel)
 
     def BackEstimates(self) :
         df = pd.DataFrame({
@@ -619,7 +619,7 @@ class ChainGLM :
             'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
         })
         df['predictions'] =  self.glmresult.predict(df)
-        return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
+        return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul= not self.IncrModel)
     
     def Residuals(self) : 
         n_row, n_col = self.FullTriangle.Inc.shape
@@ -641,18 +641,18 @@ class ChainGLM :
             estimates  = self.BackEstimates().Inc if self.IncrModel else self.BackEstimates().Cum
             simulation = estimates + np.sqrt(estimates)*shuffled_matrix 
             simulation = np.where(simulation < estimates, estimates, simulation)    
-            return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul=self.IncrModel))
+            return self.refit(Triangle(years=self.FullTriangle.years,data=simulation,isCumul= not self.IncrModel))
         elif method == "Parametric Distribution" :
             n_row, n_col = self.FullTriangle.Cum.shape
             df = pd.DataFrame({
                 'year': np.repeat(range(self.FullTriangle.Inc.shape[0]), self.FullTriangle.Inc.shape[1]),
                 'dev': np.tile(range(self.FullTriangle.Inc.shape[1]), self.FullTriangle.Inc.shape[0]),
-                'value': self.FullTriangle.Cum.flatten() if self.IncrModel else self.FullTriangle.Inc.flatten()
+                'value': self.FullTriangle.Inc.flatten() if self.IncrModel else self.FullTriangle.Cum.flatten()
             })
             df['predictions'] =  simulate_GLM(self.glmresult, df[['year','dev']])
             df['predictions'] = df['predictions'].astype(float)
             df.loc[df['dev']+ df['year'] < n_row, 'predictions'] = df.loc[df['dev']+ df['year'] < n_row, 'value']
-            return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul=self.IncrModel)
+            return Triangle(self.FullTriangle.years,data = df.pivot(index='year', columns='dev', values='predictions').values,isCumul= not self.IncrModel)
 
     def Provisions(self):
         """

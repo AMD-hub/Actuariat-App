@@ -102,7 +102,7 @@ if st.sidebar.button("Do Calculation"):
             model_charge.fit(st.session_state.charge_tr)
             st.session_state.model_charge = model_charge 
         elif method == 'GLM' : 
-            if check_positive(st.session_state.model_charge.Inc):
+            if check_positive(st.session_state.charge_tr.Inc):
                 isIncrement = True 
             else : 
                 isIncrement = False 
@@ -219,7 +219,17 @@ if goo:
         elif chosen_thing == "Fitted Triangle [increments]":
             st.dataframe(tr2df(model.FullTriangle,cumul=False)) 
         elif chosen_thing == "Reserves":
-            st.dataframe(model.Provisions())
+            if chosen_data == "Reglement" :
+                st.dataframe(model.Provisions())
+            else : 
+                prov = model.Provisions() 
+                FullTriangle_ch = st.session_state.model_charge.FullTriangle.Cum
+                FullTriangle_rg = st.session_state.model_reg.FullTriangle.Cum
+                n_row, n_col = FullTriangle_ch.shape
+                prov['Provision'] = np.array([
+                    FullTriangle_ch[i, -1] - FullTriangle_rg[i, n_row - i - 1] for i in range(n_row)
+                ])
+                st.dataframe(prov)
         else :
             st.warning("Plz Choose Data to Show !!")
 

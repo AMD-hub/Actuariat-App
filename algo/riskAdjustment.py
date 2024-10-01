@@ -37,7 +37,7 @@ def SimulateBE(model_reg,model_charge, tauxZC, num_simulation,act=True, method= 
 
 def Plot_RiskAdjustement(simulations,confidence) : 
     quantile_value = np.quantile(simulations, confidence)
-    plt.hist(simulations, bins=30, color='skyblue', edgecolor='black', label='BE <= quantile')
+    plt.hist(simulations, bins=50, color='skyblue', edgecolor='black', label='BE <= quantile')
     plt.axvline(quantile_value, color='red', linestyle='dashed', linewidth=1, label=f'BE at Risk (α={confidence})')
     plt.xlabel('Value')
     plt.ylabel('Frequency')
